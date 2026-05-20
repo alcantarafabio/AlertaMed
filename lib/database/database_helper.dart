@@ -19,7 +19,7 @@ class DatabaseHelper {
     final path = join(await getDatabasesPath(), 'alertamed.db');
     return openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -28,19 +28,25 @@ class DatabaseHelper {
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
       CREATE TABLE medications (
-        id       INTEGER PRIMARY KEY AUTOINCREMENT,
-        name     TEXT NOT NULL,
-        dosage   TEXT NOT NULL,
-        schedule TEXT NOT NULL,
-        notes    TEXT NOT NULL DEFAULT ''
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        name      TEXT NOT NULL,
+        dosage    TEXT NOT NULL,
+        schedule  TEXT NOT NULL,
+        frequency TEXT NOT NULL DEFAULT '',
+        notes     TEXT NOT NULL DEFAULT ''
       )
     ''');
     await _createPatientTable(db);
+    await _seedDemoData(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await _createPatientTable(db);
+    }
+    if (oldVersion < 3) {
+      await db.execute(
+          "ALTER TABLE medications ADD COLUMN frequency TEXT NOT NULL DEFAULT ''");
     }
   }
 
@@ -60,12 +66,55 @@ class DatabaseHelper {
     ''');
   }
 
+  // Inserido apenas na criação do banco (fresh install).
+  Future<void> _seedDemoData(Database db) async {
+    await db.insert('patient', {
+      'id': 1,
+      'name': 'Maria Helena Souza',
+      'age': 72,
+      'blood_type': 'O+',
+      'allergies': 'Penicilina',
+      'emergency_contact': 'Ana Souza - (11) 99999-9999',
+      'caregiver_name': 'Ana Souza',
+      'caregiver_phone': '(11) 99999-9999',
+      'notes': 'Paciente com hipertensão e baixa visão.',
+    });
+    await db.insert('medications', {
+      'name': 'Losartana',
+      'dosage': '50mg',
+      'schedule': '08:00',
+      'frequency': '1x ao dia',
+      'notes': 'Tomar com água em jejum',
+    });
+    await db.insert('medications', {
+      'name': 'Metformina',
+      'dosage': '500mg',
+      'schedule': '12:00 e 19:00',
+      'frequency': '2x ao dia',
+      'notes': 'Tomar durante a refeição',
+    });
+    await db.insert('medications', {
+      'name': 'Sinvastatina',
+      'dosage': '20mg',
+      'schedule': '22:00',
+      'frequency': '1x ao dia',
+      'notes': '',
+    });
+  }
+
   // --- Medications ---
 
   Future<int> insertMedication(Medication medication) async {
     final db = await database;
     return db.insert('medications', medication.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<int> updateMedication(Medication medication) async {
+    final db = await database;
+    final map = medication.toMap()..remove('id');
+    return db.update('medications', map,
+        where: 'id = ?', whereArgs: [medication.id]);
   }
 
   Future<List<Medication>> getMedications() async {

@@ -3,6 +3,7 @@ class Medication {
   final String name;
   final String dosage;
   final String schedule;
+  final String frequency;
   final String notes;
 
   const Medication({
@@ -10,6 +11,7 @@ class Medication {
     required this.name,
     required this.dosage,
     required this.schedule,
+    this.frequency = '',
     this.notes = '',
   });
 
@@ -18,6 +20,7 @@ class Medication {
         'name': name,
         'dosage': dosage,
         'schedule': schedule,
+        'frequency': frequency,
         'notes': notes,
       };
 
@@ -26,6 +29,7 @@ class Medication {
         name: map['name'] as String,
         dosage: map['dosage'] as String,
         schedule: map['schedule'] as String,
+        frequency: (map['frequency'] as String?) ?? '',
         notes: (map['notes'] as String?) ?? '',
       );
 }

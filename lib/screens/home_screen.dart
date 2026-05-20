@@ -77,6 +77,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (adicionou == true) _loadData();
   }
 
+  Future<void> _editarMedicamento(Medication med) async {
+    final editado = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => AddMedicationScreen(medication: med)),
+    );
+    if (editado == true) _loadData();
+  }
+
   Future<void> _navegarParaPaciente() async {
     final salvo = await Navigator.push<bool>(
       context,
@@ -118,11 +126,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBody() {
+    final temAlergias = _patient != null &&
+        _patient!.allergies != null &&
+        _patient!.allergies!.isNotEmpty;
+
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
           child: PatientCard(patient: _patient, onEdit: _navegarParaPaciente),
         ),
+        if (temAlergias)
+          SliverToBoxAdapter(
+            child: _AllergyAlert(allergies: _patient!.allergies!),
+          ),
         if (_medications.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
@@ -137,6 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   final med = _medications[index];
                   return _MedicationCard(
                     medication: med,
+                    onEdit: () => _editarMedicamento(med),
                     onDelete: () => _deleteMedication(med),
                   );
                 },
@@ -176,22 +193,81 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+class _AllergyAlert extends StatelessWidget {
+  final String allergies;
+
+  const _AllergyAlert({required this.allergies});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Atenção: alergias do paciente: $allergies',
+      child: Card(
+        color: const Color(0xFFFFF8E1),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Color(0xFFFF8F00),
+                size: 26,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'ALERGIAS',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFE65100),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      allergies,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Color(0xFF1A1A1A),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MedicationCard extends StatelessWidget {
   final Medication medication;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _MedicationCard({
     required this.medication,
+    required this.onEdit,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Medicamento: ${medication.name}, dosagem: ${medication.dosage}, horários: ${medication.schedule}',
+      label:
+          'Medicamento: ${medication.name}, dosagem: ${medication.dosage}, horário: ${medication.schedule}',
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -209,20 +285,43 @@ class _MedicationCard extends StatelessWidget {
                         style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 4),
                     _InfoRow(label: 'Dosagem', value: medication.dosage),
-                    _InfoRow(label: 'Horários', value: medication.schedule),
+                    _InfoRow(label: 'Horário', value: medication.schedule),
+                    if (medication.frequency.isNotEmpty)
+                      _InfoRow(label: 'Frequência', value: medication.frequency),
                     if (medication.notes.isNotEmpty)
                       _InfoRow(label: 'Obs.', value: medication.notes),
                   ],
                 ),
               ),
-              Semantics(
-                label: 'Remover ${medication.name}',
-                button: true,
-                child: IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 28, color: Colors.red),
-                  onPressed: onDelete,
-                  tooltip: 'Remover medicamento',
-                ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Semantics(
+                    label: 'Editar ${medication.name}',
+                    button: true,
+                    child: IconButton(
+                      icon: const Icon(Icons.edit_outlined,
+                          size: 22, color: Color(0xFF1565C0)),
+                      onPressed: onEdit,
+                      tooltip: 'Editar medicamento',
+                      padding: const EdgeInsets.all(8),
+                      constraints: const BoxConstraints(),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Semantics(
+                    label: 'Remover ${medication.name}',
+                    button: true,
+                    child: IconButton(
+                      icon: const Icon(Icons.delete_outline,
+                          size: 22, color: Colors.red),
+                      onPressed: onDelete,
+                      tooltip: 'Remover medicamento',
+                      padding: const EdgeInsets.all(8),
+                      constraints: const BoxConstraints(),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
