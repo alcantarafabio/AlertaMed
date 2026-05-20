@@ -4,6 +4,7 @@ import '../models/medication.dart';
 import '../models/patient.dart';
 import '../widgets/patient_card.dart';
 import 'add_medication_screen.dart';
+import 'patient_form_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -76,6 +77,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (adicionou == true) _loadData();
   }
 
+  Future<void> _navegarParaPaciente() async {
+    final salvo = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => PatientFormScreen(patient: _patient)),
+    );
+    if (salvo == true) _loadData();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -112,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
-          child: PatientCard(patient: _patient),
+          child: PatientCard(patient: _patient, onEdit: _navegarParaPaciente),
         ),
         if (_medications.isEmpty)
           SliverFillRemaining(

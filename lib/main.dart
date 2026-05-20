@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'theme/tema.dart';
-import 'screens/home_screen.dart';
+import 'screens/welcome_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,7 +16,7 @@ class AlertaMedApp extends StatelessWidget {
       title: 'AlertaMed',
       debugShowCheckedModeBanner: false,
       theme: buildTema(),
-      home: const HomeScreen(),
+      home: const WelcomeScreen(),
     );
   }
 }
