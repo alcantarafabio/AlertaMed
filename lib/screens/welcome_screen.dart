@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/cores.dart';
-import 'home_screen.dart';
+import 'patient_list_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -83,9 +83,9 @@ class WelcomeScreen extends StatelessWidget {
                 label: 'Começar a usar o AlertaMed',
                 button: true,
                 child: ElevatedButton(
-                  onPressed: () => Navigator.pushReplacement(
+                  onPressed: () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const HomeScreen()),
+                    MaterialPageRoute(builder: (_) => const PatientListScreen()),
                   ),
                   child: const Text('Começar'),
                 ),

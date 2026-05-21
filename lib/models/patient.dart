@@ -8,6 +8,7 @@ class Patient {
   final String? caregiverName;
   final String? caregiverPhone;
   final String? notes;
+  final bool isDemo;
 
   const Patient({
     this.id,
@@ -19,6 +20,7 @@ class Patient {
     this.caregiverName,
     this.caregiverPhone,
     this.notes,
+    this.isDemo = false,
   });
 
   Map<String, dynamic> toMap() => {
@@ -31,6 +33,7 @@ class Patient {
         'caregiver_name': caregiverName,
         'caregiver_phone': caregiverPhone,
         'notes': notes,
+        'is_demo': isDemo ? 1 : 0,
       };
 
   factory Patient.fromMap(Map<String, dynamic> map) => Patient(
@@ -43,5 +46,6 @@ class Patient {
         caregiverName: map['caregiver_name'] as String?,
         caregiverPhone: map['caregiver_phone'] as String?,
         notes: map['notes'] as String?,
+        isDemo: (map['is_demo'] as int? ?? 0) == 1,
       );
 }

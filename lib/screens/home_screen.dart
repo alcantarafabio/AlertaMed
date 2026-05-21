@@ -1,13 +1,18 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/medication.dart';
 import '../models/patient.dart';
+import '../services/notification_service.dart';
+import '../services/tts_service.dart';
 import '../widgets/patient_card.dart';
 import 'add_medication_screen.dart';
 import 'patient_form_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final Patient patient;
+
+  const HomeScreen({super.key, required this.patient});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -16,21 +21,30 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final DatabaseHelper _db = DatabaseHelper();
   List<Medication> _medications = [];
-  Patient? _patient;
+  late Patient _patient;
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
+    _patient = widget.patient;
     _loadData();
   }
 
   Future<void> _loadData() async {
-    final meds = await _db.getMedications();
-    final patient = await _db.getPatient();
+    if (_patient.id == null) return;
+    final meds = await _db.getMedicationsByPatient(_patient.id!);
+
+    final ns = NotificationService();
+    await ns.cancelAll();
+    for (final med in meds) {
+      if (med.notificationTime.isNotEmpty) {
+        await ns.schedule(med, patientName: _patient.name);
+      }
+    }
+
     setState(() {
       _medications = meds;
-      _patient = patient;
       _loading = false;
     });
   }
@@ -59,6 +73,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (confirmed == true && med.id != null) {
+      await NotificationService().cancel(med.id!);
+      if (med.photoPath.isNotEmpty) {
+        final file = File(med.photoPath);
+        if (await file.exists()) await file.delete();
+      }
       await _db.deleteMedication(med.id!);
       _loadData();
       if (mounted) {
@@ -72,7 +91,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _navegarParaCadastro() async {
     final adicionou = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => const AddMedicationScreen()),
+      MaterialPageRoute(
+        builder: (_) => AddMedicationScreen(patientId: _patient.id ?? 1),
+      ),
     );
     if (adicionou == true) _loadData();
   }
@@ -85,12 +106,22 @@ class _HomeScreenState extends State<HomeScreen> {
     if (editado == true) _loadData();
   }
 
+  void _toggleSound() {
+    final tts = TtsService();
+    tts.soundEnabled = !tts.soundEnabled;
+    if (!tts.soundEnabled) tts.stop();
+    setState(() {});
+  }
+
   Future<void> _navegarParaPaciente() async {
-    final salvo = await Navigator.push<bool>(
+    final updated = await Navigator.push<Patient?>(
       context,
       MaterialPageRoute(builder: (_) => PatientFormScreen(patient: _patient)),
     );
-    if (salvo == true) _loadData();
+    if (updated != null) {
+      setState(() => _patient = updated);
+      _loadData();
+    }
   }
 
   @override
@@ -100,15 +131,20 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('AlertaMed'),
         actions: [
           Semantics(
-            label: 'Total de medicamentos cadastrados',
-            child: Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Center(
-                child: Text(
-                  '${_medications.length} med.',
-                  style: const TextStyle(fontSize: 16),
-                ),
+            label: TtsService().soundEnabled
+                ? 'Som ativo. Toque para silenciar.'
+                : 'Som silenciado. Toque para ativar.',
+            button: true,
+            child: IconButton(
+              onPressed: _toggleSound,
+              icon: Icon(
+                TtsService().soundEnabled ? Icons.volume_up : Icons.volume_off,
+                size: 28,
+                color: TtsService().soundEnabled
+                    ? const Color(0xFF4CAF50)
+                    : const Color(0xFFEF5350),
               ),
+              tooltip: TtsService().soundEnabled ? 'Silenciar som' : 'Ativar som',
             ),
           ),
         ],
@@ -116,19 +152,17 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _buildBody(),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: _navegarParaCadastro,
-        icon: const Icon(Icons.add, size: 28),
-        label: const Text('Adicionar'),
-        tooltip: 'Adicionar novo medicamento',
+        tooltip: 'Adicionar medicamento',
+        child: const Icon(Icons.add, size: 32),
       ),
     );
   }
 
   Widget _buildBody() {
-    final temAlergias = _patient != null &&
-        _patient!.allergies != null &&
-        _patient!.allergies!.isNotEmpty;
+    final temAlergias = _patient.allergies != null &&
+        _patient.allergies!.isNotEmpty;
 
     return CustomScrollView(
       slivers: [
@@ -137,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         if (temAlergias)
           SliverToBoxAdapter(
-            child: _AllergyAlert(allergies: _patient!.allergies!),
+            child: _AllergyAlert(allergies: _patient.allergies!),
           ),
         if (_medications.isEmpty)
           SliverFillRemaining(
@@ -153,6 +187,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   final med = _medications[index];
                   return _MedicationCard(
                     medication: med,
+                    onTap: () => TtsService()
+                        .speakIdentification(med.name, med.dosage),
                     onEdit: () => _editarMedicamento(med),
                     onDelete: () => _deleteMedication(med),
                   );
@@ -182,7 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 12),
             const Text(
-              'Toque em "Adicionar" para\ncadastrar seu primeiro medicamento.',
+              'Toque no botão + para\ncadastrar o primeiro medicamento.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 18),
             ),
@@ -201,7 +237,7 @@ class _AllergyAlert extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Atenção: alergias do paciente: $allergies',
+      label: 'Atenção: alergias da pessoa: $allergies',
       child: Card(
         color: const Color(0xFFFFF8E1),
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -251,82 +287,223 @@ class _AllergyAlert extends StatelessWidget {
 
 class _MedicationCard extends StatelessWidget {
   final Medication medication;
+  final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _MedicationCard({
     required this.medication,
+    required this.onTap,
     required this.onEdit,
     required this.onDelete,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label:
-          'Medicamento: ${medication.name}, dosagem: ${medication.dosage}, horário: ${medication.schedule}',
-      child: Card(
+  void _showDetails(BuildContext context) {
+    final hasPhoto = medication.photoPath.isNotEmpty &&
+        File(medication.photoPath).existsSync();
+    final imgHeight =
+        (MediaQuery.of(context).size.height * 0.35).clamp(140.0, 240.0);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.medication,
-                size: 36,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(medication.name,
-                        style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 4),
-                    _InfoRow(label: 'Dosagem', value: medication.dosage),
-                    _InfoRow(label: 'Horário', value: medication.schedule),
-                    if (medication.frequency.isNotEmpty)
-                      _InfoRow(label: 'Frequência', value: medication.frequency),
-                    if (medication.notes.isNotEmpty)
-                      _InfoRow(label: 'Obs.', value: medication.notes),
-                  ],
+              if (hasPhoto)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.file(
+                    File(medication.photoPath),
+                    width: double.infinity,
+                    height: imgHeight,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _iconFallback(ctx),
+                  ),
+                )
+              else
+                Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE3F2FD),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.medication,
+                    size: 72,
+                    color: Theme.of(ctx).colorScheme.primary,
+                  ),
+                ),
+              const SizedBox(height: 20),
+              Semantics(
+                header: true,
+                child: Text(
+                  medication.name,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.bold),
                 ),
               ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Semantics(
-                    label: 'Editar ${medication.name}',
-                    button: true,
-                    child: IconButton(
-                      icon: const Icon(Icons.edit_outlined,
-                          size: 22, color: Color(0xFF1565C0)),
-                      onPressed: onEdit,
-                      tooltip: 'Editar medicamento',
-                      padding: const EdgeInsets.all(8),
-                      constraints: const BoxConstraints(),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Semantics(
-                    label: 'Remover ${medication.name}',
-                    button: true,
-                    child: IconButton(
-                      icon: const Icon(Icons.delete_outline,
-                          size: 22, color: Colors.red),
-                      onPressed: onDelete,
-                      tooltip: 'Remover medicamento',
-                      padding: const EdgeInsets.all(8),
-                      constraints: const BoxConstraints(),
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 8),
+              Text(
+                medication.dosage,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 20, color: Color(0xFF555555)),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Fechar', style: TextStyle(fontSize: 18)),
+                ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _iconFallback(BuildContext context) => Icon(
+        Icons.medication,
+        size: 72,
+        color: Theme.of(context).colorScheme.primary,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhoto =
+        medication.photoPath.isNotEmpty && File(medication.photoPath).existsSync();
+    final hasNotif = medication.notificationTime.isNotEmpty;
+
+    return Semantics(
+      label:
+          'Medicamento: ${medication.name}, dosagem: ${medication.dosage}, horário: ${medication.schedule}. Toque para ouvir e ver detalhes.',
+      child: Card(
+        child: InkWell(
+          onTap: () {
+            onTap(); // TTS: speakIdentification
+            _showDetails(context);
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _MedThumbnail(photoPath: hasPhoto ? medication.photoPath : null),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(medication.name,
+                                style: Theme.of(context).textTheme.titleMedium),
+                          ),
+                          if (hasNotif) ...[
+                            const SizedBox(width: 4),
+                            Tooltip(
+                              message:
+                                  'Lembrete às ${medication.notificationTime}',
+                              child: const Icon(
+                                Icons.alarm,
+                                size: 18,
+                                color: Color(0xFF1565C0),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      _InfoRow(label: 'Dosagem', value: medication.dosage),
+                      _InfoRow(label: 'Horário', value: medication.schedule),
+                      if (hasNotif)
+                        _InfoRow(
+                            label: 'Lembrete',
+                            value: medication.notificationTime),
+                      if (medication.frequency.isNotEmpty)
+                        _InfoRow(
+                            label: 'Frequência', value: medication.frequency),
+                      if (medication.notes.isNotEmpty)
+                        _InfoRow(label: 'Obs.', value: medication.notes),
+                    ],
+                  ),
+                ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Semantics(
+                      label: 'Editar ${medication.name}',
+                      button: true,
+                      child: IconButton(
+                        icon: const Icon(Icons.edit_outlined,
+                            size: 22, color: Color(0xFF1565C0)),
+                        onPressed: onEdit,
+                        tooltip: 'Editar medicamento',
+                        padding: const EdgeInsets.all(8),
+                        constraints: const BoxConstraints(),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Semantics(
+                      label: 'Remover ${medication.name}',
+                      button: true,
+                      child: IconButton(
+                        icon: const Icon(Icons.delete_outline,
+                            size: 22, color: Colors.red),
+                        onPressed: onDelete,
+                        tooltip: 'Remover medicamento',
+                        padding: const EdgeInsets.all(8),
+                        constraints: const BoxConstraints(),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MedThumbnail extends StatelessWidget {
+  final String? photoPath;
+
+  const _MedThumbnail({this.photoPath});
+
+  @override
+  Widget build(BuildContext context) {
+    if (photoPath != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.file(
+          File(photoPath!),
+          width: 56,
+          height: 56,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _defaultIcon(context),
+        ),
+      );
+    }
+    return _defaultIcon(context);
+  }
+
+  Widget _defaultIcon(BuildContext context) {
+    return Icon(
+      Icons.medication,
+      size: 48,
+      color: Theme.of(context).colorScheme.primary,
     );
   }
 }

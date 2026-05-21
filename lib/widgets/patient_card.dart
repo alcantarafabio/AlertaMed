@@ -18,7 +18,7 @@ class PatientCard extends StatelessWidget {
 
   Widget _buildCard(BuildContext context, Patient p) {
     return Semantics(
-      label: 'Ficha do paciente: ${p.name}, ${p.age} anos',
+      label: 'Ficha da pessoa: ${p.name}, ${p.age} anos',
       child: Card(
         margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         color: AppCores.primaria,
@@ -55,13 +55,13 @@ class PatientCard extends StatelessWidget {
                   ),
                   if (onEdit != null)
                     Semantics(
-                      label: 'Editar dados do paciente',
+                      label: 'Editar dados da pessoa',
                       button: true,
                       child: IconButton(
                         icon: const Icon(Icons.edit_outlined,
                             color: Colors.white70, size: 22),
                         onPressed: onEdit,
-                        tooltip: 'Editar paciente',
+                        tooltip: 'Editar pessoa',
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                       ),
@@ -86,6 +86,16 @@ class PatientCard extends StatelessWidget {
                       icon: Icons.favorite,
                       texto: 'Cuidador(a): ${p.caregiverName}'
                           '${p.caregiverPhone != null && p.caregiverPhone!.isNotEmpty ? ' · ${p.caregiverPhone}' : ''}'),
+              ],
+              if (p.isDemo) ...[
+                const SizedBox(height: 10),
+                const Divider(color: Colors.white24, height: 1),
+                const SizedBox(height: 10),
+                _DetalheRow(
+                  icon: Icons.info_outline,
+                  texto:
+                      'Cadastro de exemplo — edite ou exclua para começar.',
+                ),
               ],
             ],
           ),
@@ -119,7 +129,7 @@ class PatientCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Nenhum paciente cadastrado',
+                    'Nenhuma pessoa cadastrada',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -128,7 +138,7 @@ class PatientCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Adicione as informações do paciente principal para facilitar o cuidado.',
+                    'Adicione as informações da pessoa principal para facilitar o cuidado.',
                     style: TextStyle(
                       fontSize: 15,
                       color: AppCores.textoSecundario,
@@ -137,13 +147,13 @@ class PatientCard extends StatelessWidget {
                   if (onEdit != null) ...[
                     const SizedBox(height: 12),
                     Semantics(
-                      label: 'Cadastrar paciente',
+                      label: 'Cadastrar pessoa',
                       button: true,
                       child: TextButton.icon(
                         onPressed: onEdit,
                         icon: const Icon(Icons.add_circle_outline, size: 20),
                         label: const Text(
-                          'Cadastrar paciente',
+                          'Cadastrar pessoa',
                           style: TextStyle(
                               fontSize: 16, fontWeight: FontWeight.w600),
                         ),

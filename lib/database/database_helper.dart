@@ -19,7 +19,7 @@ class DatabaseHelper {
     final path = join(await getDatabasesPath(), 'alertamed.db');
     return openDatabase(
       path,
-      version: 3,
+      version: 6,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -28,12 +28,16 @@ class DatabaseHelper {
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
       CREATE TABLE medications (
-        id        INTEGER PRIMARY KEY AUTOINCREMENT,
-        name      TEXT NOT NULL,
-        dosage    TEXT NOT NULL,
-        schedule  TEXT NOT NULL,
-        frequency TEXT NOT NULL DEFAULT '',
-        notes     TEXT NOT NULL DEFAULT ''
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        patient_id        INTEGER DEFAULT 1,
+        name              TEXT NOT NULL,
+        dosage            TEXT NOT NULL,
+        schedule          TEXT NOT NULL,
+        frequency         TEXT NOT NULL DEFAULT '',
+        notes             TEXT NOT NULL DEFAULT '',
+        photo_path        TEXT DEFAULT '',
+        notification_time TEXT DEFAULT '',
+        voice_reminder    INTEGER DEFAULT 0
       )
     ''');
     await _createPatientTable(db);
@@ -48,6 +52,17 @@ class DatabaseHelper {
       await db.execute(
           "ALTER TABLE medications ADD COLUMN frequency TEXT NOT NULL DEFAULT ''");
     }
+    if (oldVersion < 4) {
+      await db.execute("ALTER TABLE medications ADD COLUMN photo_path TEXT DEFAULT ''");
+      await db.execute("ALTER TABLE medications ADD COLUMN notification_time TEXT DEFAULT ''");
+      await db.execute("ALTER TABLE medications ADD COLUMN voice_reminder INTEGER DEFAULT 0");
+    }
+    if (oldVersion < 5) {
+      await db.execute("ALTER TABLE medications ADD COLUMN patient_id INTEGER DEFAULT 1");
+    }
+    if (oldVersion < 6) {
+      await db.execute("ALTER TABLE patient ADD COLUMN is_demo INTEGER DEFAULT 0");
+    }
   }
 
   Future<void> _createPatientTable(Database db) async {
@@ -61,7 +76,8 @@ class DatabaseHelper {
         emergency_contact TEXT,
         caregiver_name    TEXT,
         caregiver_phone   TEXT,
-        notes             TEXT
+        notes             TEXT,
+        is_demo           INTEGER DEFAULT 0
       )
     ''');
   }
@@ -70,35 +86,42 @@ class DatabaseHelper {
   Future<void> _seedDemoData(Database db) async {
     await db.insert('patient', {
       'id': 1,
-      'name': 'Maria Helena Souza',
-      'age': 72,
+      'name': 'Pessoa de demonstração',
+      'age': 70,
       'blood_type': 'O+',
       'allergies': 'Penicilina',
-      'emergency_contact': 'Ana Souza - (11) 99999-9999',
-      'caregiver_name': 'Ana Souza',
+      'emergency_contact': 'Familiar - (11) 99999-9999',
+      'caregiver_name': 'Familiar responsável',
       'caregiver_phone': '(11) 99999-9999',
-      'notes': 'Paciente com hipertensão e baixa visão.',
+      'notes': 'Este é um cadastro de exemplo. Edite ou exclua para começar.',
+      'is_demo': 1,
     });
     await db.insert('medications', {
+      'patient_id': 1,
       'name': 'Losartana',
       'dosage': '50mg',
       'schedule': '08:00',
       'frequency': '1x ao dia',
       'notes': 'Tomar com água em jejum',
+      'notification_time': '08:00',
     });
     await db.insert('medications', {
+      'patient_id': 1,
       'name': 'Metformina',
       'dosage': '500mg',
       'schedule': '12:00 e 19:00',
       'frequency': '2x ao dia',
       'notes': 'Tomar durante a refeição',
+      'notification_time': '12:00',
     });
     await db.insert('medications', {
+      'patient_id': 1,
       'name': 'Sinvastatina',
       'dosage': '20mg',
       'schedule': '22:00',
       'frequency': '1x ao dia',
       'notes': '',
+      'notification_time': '22:00',
     });
   }
 
@@ -117,9 +140,14 @@ class DatabaseHelper {
         where: 'id = ?', whereArgs: [medication.id]);
   }
 
-  Future<List<Medication>> getMedications() async {
+  Future<List<Medication>> getMedicationsByPatient(int patientId) async {
     final db = await database;
-    final maps = await db.query('medications', orderBy: 'name ASC');
+    final maps = await db.query(
+      'medications',
+      where: 'patient_id = ?',
+      whereArgs: [patientId],
+      orderBy: 'name ASC',
+    );
     return maps.map(Medication.fromMap).toList();
   }
 
@@ -128,19 +156,36 @@ class DatabaseHelper {
     return db.delete('medications', where: 'id = ?', whereArgs: [id]);
   }
 
-  // --- Patient (single record, id always = 1) ---
+  // --- Patients ---
 
-  Future<Patient?> getPatient() async {
+  Future<List<Patient>> getPatients() async {
     final db = await database;
-    final maps = await db.query('patient', where: 'id = ?', whereArgs: [1]);
+    final maps = await db.query('patient', orderBy: 'name ASC');
+    return maps.map(Patient.fromMap).toList();
+  }
+
+  Future<Patient?> getPatientById(int id) async {
+    final db = await database;
+    final maps = await db.query('patient', where: 'id = ?', whereArgs: [id]);
     if (maps.isEmpty) return null;
     return Patient.fromMap(maps.first);
   }
 
-  Future<void> savePatient(Patient patient) async {
+  Future<int> insertPatient(Patient patient) async {
     final db = await database;
-    final map = patient.toMap()..['id'] = 1;
-    await db.insert('patient', map,
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    final map = patient.toMap()..remove('id');
+    return db.insert('patient', map);
+  }
+
+  Future<void> updatePatient(Patient patient) async {
+    final db = await database;
+    final map = patient.toMap()..remove('id');
+    await db.update('patient', map, where: 'id = ?', whereArgs: [patient.id]);
+  }
+
+  Future<void> deletePatient(int id) async {
+    final db = await database;
+    await db.delete('medications', where: 'patient_id = ?', whereArgs: [id]);
+    await db.delete('patient', where: 'id = ?', whereArgs: [id]);
   }
 }

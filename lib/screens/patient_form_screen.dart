@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../database/database_helper.dart';
 import '../models/patient.dart';
+import '../services/notification_service.dart';
 import '../theme/cores.dart';
 
 class PatientFormScreen extends StatefulWidget {
@@ -27,6 +28,8 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   late final TextEditingController _observacoesCtrl;
 
   bool _salvando = false;
+
+  bool get _isEdit => widget.patient != null;
 
   @override
   void initState() {
@@ -55,6 +58,46 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     super.dispose();
   }
 
+  Future<void> _excluirPessoa() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir pessoa?', style: TextStyle(fontSize: 20)),
+        content: const Text(
+          'Deseja realmente excluir esta pessoa e todos os medicamentos associados?',
+          style: TextStyle(fontSize: 18),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar', style: TextStyle(fontSize: 18)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir',
+                style: TextStyle(fontSize: 18, color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final p = widget.patient!;
+    final meds = await _db.getMedicationsByPatient(p.id!);
+    final ns = NotificationService();
+    for (final med in meds) {
+      if (med.id != null) await ns.cancel(med.id!);
+    }
+    await _db.deletePatient(p.id!);
+
+    if (mounted) {
+      final nav = Navigator.of(context);
+      nav.pop(); // fecha PatientFormScreen
+      nav.pop(); // fecha HomeScreen → volta para PatientListScreen
+    }
+  }
+
   Future<void> _salvar() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _salvando = true);
@@ -62,6 +105,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     String? nullable(String s) => s.trim().isEmpty ? null : s.trim();
 
     final patient = Patient(
+      id: widget.patient?.id,
       name: _nomeCtrl.text.trim(),
       age: int.parse(_idadeCtrl.text.trim()),
       bloodType: nullable(_tipoSanguineoCtrl.text),
@@ -72,24 +116,32 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
       notes: nullable(_observacoesCtrl.text),
     );
 
-    await _db.savePatient(patient);
+    Patient? savedPatient;
+    if (_isEdit) {
+      await _db.updatePatient(patient);
+      savedPatient = await _db.getPatientById(patient.id!);
+    } else {
+      final newId = await _db.insertPatient(patient);
+      savedPatient = await _db.getPatientById(newId);
+    }
 
-    if (mounted) Navigator.pop(context, true);
+    if (mounted) Navigator.pop(context, savedPatient);
   }
 
   @override
   Widget build(BuildContext context) {
-    final isEdit = widget.patient != null;
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEdit ? 'Editar Paciente' : 'Cadastrar Paciente'),
+        title: Text(_isEdit ? 'Editar Pessoa' : 'Cadastrar Pessoa'),
       ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
+      body: SafeArea(
+        top: false,
+        child: Form(
+          key: _formKey,
+          child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
-            _secao('Dados do Paciente'),
+            _secao('Dados da Pessoa'),
             _Campo(
               label: 'Nome completo *',
               ctrl: _nomeCtrl,
@@ -162,12 +214,25 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                       child: CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2.5),
                     )
-                  : const Text('Salvar paciente'),
+                  : const Text('Salvar pessoa'),
             ),
+            if (_isEdit) ...[
+              const SizedBox(height: 16),
+              OutlinedButton(
+                onPressed: _excluirPessoa,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                ),
+                child: const Text('Excluir pessoa',
+                    style: TextStyle(fontSize: 18)),
+              ),
+            ],
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   Widget _secao(String titulo) {
