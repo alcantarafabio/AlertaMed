@@ -6,7 +6,7 @@ Aplicativo mobile desenvolvido em Flutter com foco em adesão medicamentosa, ace
 
 ## Sobre o projeto
 
-O AlertaMed nasceu a partir da observação das dificuldades enfrentadas por idosos, pessoas com baixa visão e pacientes com múltiplos medicamentos no gerenciamento da rotina medicamentosa.
+O AlertaMed foi desenvolvido a partir da observação das dificuldades enfrentadas por idosos, pessoas com baixa visão e pacientes com múltiplos medicamentos no gerenciamento da rotina medicamentosa.
 
 O projeto busca oferecer uma solução simples, acessível e intuitiva para auxiliar no acompanhamento de horários, organização de medicamentos e redução de esquecimentos durante tratamentos contínuos.
 
@@ -56,6 +56,13 @@ O aplicativo foi pensado principalmente para:
 
 ---
 
+## Compatibilidades
+
+- Android
+- iOS
+
+Aplicativo testado em dispositivos reais.
+
 ## Estrutura do projeto
 
 ```bash
@@ -95,4 +102,4 @@ Projeto acadêmico desenvolvido nas atividades extensionistas da FMU, com foco e
 
 ## Status do projeto
 
-MVP em desenvolvimento.
+MVP funcional em evolução contínua.
