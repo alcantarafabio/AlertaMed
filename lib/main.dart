@@ -23,23 +23,77 @@ class AlertaMedApp extends StatefulWidget {
   State<AlertaMedApp> createState() => _AlertaMedAppState();
 }
 
-class _AlertaMedAppState extends State<AlertaMedApp> {
+class _AlertaMedAppState extends State<AlertaMedApp>
+    with WidgetsBindingObserver {
   StreamSubscription<String>? _notifSub;
+  DateTime? _backgroundedAt;
 
   @override
   void initState() {
     super.initState();
-    // Escuta taps em notificações enquanto o app está ativo ou em background.
+    WidgetsBinding.instance.addObserver(this);
     _notifSub = NotificationService.tapStream.listen(_handlePayload);
-    // Verifica se o app foi aberto por notificação (cold start).
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _checkInitialNotification());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _notifSub?.cancel();
     super.dispose();
+  }
+
+  // Registra quando o app vai para background.
+  // Ao voltar, verifica se algum medicamento foi notificado enquanto
+  // o app estava em segundo plano e fala o lembrete.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _backgroundedAt = DateTime.now();
+    } else if (state == AppLifecycleState.resumed &&
+        _backgroundedAt != null) {
+      final bg = _backgroundedAt!;
+      _backgroundedAt = null;
+      _speakIfNotificationJustFired(bg);
+    }
+  }
+
+  // Verifica se algum medicamento tinha notificação agendada nos
+  // últimos 5 minutos. Caso sim, fala o lembrete via TTS.
+  Future<void> _speakIfNotificationJustFired(DateTime backgroundedAt) async {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final fiveMinAgo = now.subtract(const Duration(minutes: 5));
+
+    final patients = await DatabaseHelper().getPatients();
+    for (final patient in patients) {
+      if (patient.id == null) continue;
+      final meds =
+          await DatabaseHelper().getMedicationsByPatient(patient.id!);
+      for (final med in meds) {
+        if (med.notificationTime.isEmpty) continue;
+        final parts = med.notificationTime.split(':');
+        if (parts.length != 2) continue;
+        final hour = int.tryParse(parts[0]);
+        final min = int.tryParse(parts[1]);
+        if (hour == null || min == null) continue;
+
+        final notifTime =
+            DateTime(now.year, now.month, now.day, hour, min);
+
+        // Notificação disparou após o app ir para background E nos
+        // últimos 5 minutos em relação ao momento de retorno.
+        if (notifTime.isAfter(backgroundedAt) &&
+            notifTime.isAfter(fiveMinAgo) &&
+            notifTime.isBefore(now.add(const Duration(minutes: 1)))) {
+          if (!mounted) return;
+          TtsService()
+              .speakReminder(med.name, med.dosage, patientName: patient.name);
+          return;
+        }
+      }
+    }
   }
 
   Future<void> _checkInitialNotification() async {
@@ -48,6 +102,8 @@ class _AlertaMedAppState extends State<AlertaMedApp> {
   }
 
   // payload: medId|name|dosage|voiceReminder|patientName|patientId
+  // Usado quando o callback de tap chega ao Dart (funciona no Android
+  // e em configurações iOS sem FlutterImplicitEngineDelegate).
   Future<void> _handlePayload(String payload) async {
     final parts = payload.split('|');
     if (parts.length < 2) return;
@@ -55,7 +111,8 @@ class _AlertaMedAppState extends State<AlertaMedApp> {
     final medName = parts[1];
     final dosage = parts.length >= 3 ? parts[2] : '';
     final patientName = parts.length >= 5 ? parts[4] : '';
-    final patientId = parts.length >= 6 ? int.tryParse(parts[5]) ?? 1 : 1;
+    final patientId =
+        parts.length >= 6 ? int.tryParse(parts[5]) ?? 1 : 1;
 
     final patient = await DatabaseHelper().getPatientById(patientId);
     if (patient == null) return;
@@ -63,23 +120,16 @@ class _AlertaMedAppState extends State<AlertaMedApp> {
     final nav = _navigatorKey.currentState;
     if (nav == null) return;
 
-    // Limpa a pilha e coloca PatientListScreen como raiz (sem await —
-    // pushAndRemoveUntil retorna Future que só completa quando a rota é
-    // fechada; aguardá-lo bloquearia o push seguinte indefinidamente).
     nav.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const PatientListScreen()),
       (route) => false,
     );
-
-    // Empurra HomeScreen no próximo frame, garantindo a pilha:
-    // PatientListScreen → HomeScreen
     WidgetsBinding.instance.addPostFrameCallback((_) {
       nav.push(MaterialPageRoute(
         builder: (_) => HomeScreen(patient: patient),
       ));
     });
 
-    // TTS: sempre fala ao tocar na notificação, independente do voiceReminder
     TtsService().speakReminder(medName, dosage, patientName: patientName);
   }
 

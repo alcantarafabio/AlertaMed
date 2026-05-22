@@ -302,13 +302,13 @@ class _MedicationCard extends StatelessWidget {
     final hasPhoto = medication.photoPath.isNotEmpty &&
         File(medication.photoPath).existsSync();
     final imgHeight =
-        (MediaQuery.of(context).size.height * 0.35).clamp(140.0, 240.0);
+        (MediaQuery.of(context).size.height * 0.50).clamp(200.0, 420.0);
 
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -320,8 +320,9 @@ class _MedicationCard extends StatelessWidget {
                     File(medication.photoPath),
                     width: double.infinity,
                     height: imgHeight,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _iconFallback(ctx),
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                    errorBuilder: (_, _, _) => _iconFallback(ctx),
                   ),
                 )
               else
@@ -492,7 +493,7 @@ class _MedThumbnail extends StatelessWidget {
           width: 56,
           height: 56,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _defaultIcon(context),
+          errorBuilder: (_, _, _) => _defaultIcon(context),
         ),
       );
     }

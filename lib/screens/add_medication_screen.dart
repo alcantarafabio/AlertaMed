@@ -74,9 +74,9 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   Future<void> _pickImage(ImageSource source) async {
     final image = await _picker.pickImage(
       source: source,
-      imageQuality: 70,
-      maxWidth: 1024,
-      maxHeight: 1024,
+      imageQuality: 92,
+      maxWidth: 1600,
+      maxHeight: 1600,
     );
     if (image == null) return;
 
@@ -188,7 +188,9 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
       appBar: AppBar(
         title: Text(_isEdit ? 'Editar Medicamento' : 'Novo Medicamento'),
       ),
-      body: SingleChildScrollView(
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Form(
           key: _formKey,
@@ -296,7 +298,8 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }
 
@@ -314,12 +317,14 @@ class _SecaoTitulo extends StatelessWidget {
       children: [
         Icon(icone, size: 22, color: AppCores.primaria),
         const SizedBox(width: 8),
-        Text(
-          titulo,
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: AppCores.textoPrimario,
+        Expanded(
+          child: Text(
+            titulo,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              color: AppCores.textoPrimario,
+            ),
           ),
         ),
       ],
@@ -345,7 +350,8 @@ class _PhotoSection extends StatelessWidget {
     final hasPhoto = photoPath != null && photoPath!.isNotEmpty;
 
     return Container(
-      height: 120,
+      height: hasPhoto ? 140 : null,
+      constraints: hasPhoto ? null : const BoxConstraints(minHeight: 100),
       decoration: BoxDecoration(
         color: Colors.grey.shade100,
         border: Border.all(color: Colors.grey.shade300),
@@ -359,7 +365,7 @@ class _PhotoSection extends StatelessWidget {
                 Image.file(
                   File(photoPath!),
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Center(
+                  errorBuilder: (_, _, _) => const Center(
                     child: Icon(Icons.broken_image_outlined,
                         size: 48, color: Colors.grey),
                   ),

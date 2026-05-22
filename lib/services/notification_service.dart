@@ -1,11 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 import '../models/medication.dart';
 
-// Deve ser função top-level para rodar no isolate de background.
 @pragma('vm:entry-point')
 void _bgNotificationHandler(NotificationResponse response) {}
 
@@ -18,8 +18,6 @@ class NotificationService {
   static const _channelName = 'Lembretes de Medicamentos';
   static const _channelDesc = 'Lembretes dos horários dos seus medicamentos';
 
-  // Stream que emite o payload toda vez que o usuário toca em uma notificação.
-  // Escutado pelo main.dart para navegação + TTS.
   static final _tapController = StreamController<String>.broadcast();
   static Stream<String> get tapStream => _tapController.stream;
 
@@ -30,15 +28,22 @@ class NotificationService {
     tz.setLocalLocation(tz.getLocation('America/Sao_Paulo'));
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosInit = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
     await _plugin.initialize(
-      const InitializationSettings(android: androidInit),
+      const InitializationSettings(android: androidInit, iOS: iosInit),
       onDidReceiveNotificationResponse: _onTap,
       onDidReceiveBackgroundNotificationResponse: _bgNotificationHandler,
     );
 
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    await android?.requestNotificationsPermission();
+    if (Platform.isAndroid) {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      await android?.requestNotificationsPermission();
+    }
   }
 
   void _onTap(NotificationResponse response) {
@@ -46,8 +51,6 @@ class NotificationService {
     if (payload != null) _tapController.add(payload);
   }
 
-  /// Retorna o payload da notificação que abriu o app (cold start).
-  /// Retorna null se o app não foi aberto por uma notificação.
   Future<String?> getInitialPayload() async {
     final details = await _plugin.getNotificationAppLaunchDetails();
     return details?.notificationResponse?.payload;
@@ -71,39 +74,57 @@ class NotificationService {
       scheduled = scheduled.add(const Duration(days: 1));
     }
 
-    final vibrationPattern = Int64List.fromList([0, 600, 300, 600]);
-
-    final notifDetails = AndroidNotificationDetails(
-      _channelId,
-      _channelName,
-      channelDescription: _channelDesc,
-      importance: Importance.max,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-      enableVibration: true,
-      vibrationPattern: vibrationPattern,
-      playSound: true,
-    );
-
     final body = patientName.isNotEmpty
         ? '$patientName — ${med.name} · ${med.dosage}  |  ${med.notificationTime}'
         : '${med.name} — ${med.dosage}  |  ${med.notificationTime}';
 
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    if (android == null) return;
+    final payload =
+        '${med.id}|${med.name}|${med.dosage}|${med.voiceReminder}|$patientName|${med.patientId}';
 
-    await android.zonedSchedule(
-      med.id!,
-      'Hora do medicamento',
-      body,
-      scheduled,
-      notifDetails,
-      scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      matchDateTimeComponents: DateTimeComponents.time,
-      payload:
-          '${med.id}|${med.name}|${med.dosage}|${med.voiceReminder}|$patientName|${med.patientId}',
-    );
+    if (Platform.isAndroid) {
+      final vibrationPattern = Int64List.fromList([0, 600, 300, 600]);
+      final androidDetails = AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: _channelDesc,
+        importance: Importance.max,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        enableVibration: true,
+        vibrationPattern: vibrationPattern,
+        playSound: true,
+      );
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      if (android == null) return;
+      await android.zonedSchedule(
+        med.id!,
+        'Hora do medicamento',
+        body,
+        scheduled,
+        androidDetails,
+        scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        matchDateTimeComponents: DateTimeComponents.time,
+        payload: payload,
+      );
+    } else if (Platform.isIOS) {
+      const iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      );
+      await _plugin.zonedSchedule(
+        med.id!,
+        'Hora do medicamento',
+        body,
+        scheduled,
+        const NotificationDetails(iOS: iosDetails),
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+        payload: payload,
+      );
+    }
   }
 
   Future<void> cancel(int id) => _plugin.cancel(id);
